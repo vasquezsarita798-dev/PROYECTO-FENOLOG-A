@@ -1,0 +1,6 @@
+{
+  "name": "Fenología de Arándanos - Reiter Peruvian Berry",
+  "description": "Control y registro de fenología de arándanos (1er, 2do y 3er flujo vegetativo), evolución semanal por módulo, sincronización con Cloud Firestore y exportación a Excel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
