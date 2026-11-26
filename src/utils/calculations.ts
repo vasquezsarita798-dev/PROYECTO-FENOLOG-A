@@ -250,6 +250,18 @@ export function resolvePlantPreviousLengths(
   weeklyModuleData: WeeklyModuleData,
   activeWeek: string,
 ): { prevF1: number; prevF2: number; prevF3: number; prevProm: number } {
+  const isUnmeasuredZero =
+    f1Long === 0 &&
+    f2Long === 0 &&
+    f3Long === 0 &&
+    plant.prev_long_f1 === undefined &&
+    plant.prev_long_f2 === undefined &&
+    plant.prev_long_f3 === undefined;
+
+  if (isUnmeasuredZero) {
+    return { prevF1: 0, prevF2: 0, prevF3: 0, prevProm: 0 };
+  }
+
   const prevWeek = getPreviousWeekKey(weeklyModuleData, activeWeek);
   const prevModStats = prevWeek ? weeklyModuleData[prevWeek]?.[modulo] : undefined;
 

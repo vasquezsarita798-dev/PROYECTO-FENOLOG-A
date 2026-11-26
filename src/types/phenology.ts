@@ -40,6 +40,7 @@ export interface ValveData {
   turno?: string;
   fundo: string;
   variedad: string;
+  submittedAt?: string;
   plantas: PlantData[];
 }
 

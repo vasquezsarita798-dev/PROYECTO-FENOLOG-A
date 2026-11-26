@@ -18,6 +18,7 @@ import { TopActionBar } from './components/TopActionBar';
 import { ValveView } from './components/ValveView';
 import {
   createDefaultShoots,
+  createZeroPlant,
   DEFAULT_CHECKLIST,
   DEFAULT_COLUMNS,
   DEFAULT_HEADER_METADATA,
@@ -243,6 +244,7 @@ export default function App() {
   const [modalCatalogOpen, setModalCatalogOpen] = useState(false);
   const [dialogRequest, setDialogRequest] = useState<DialogRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isSubmittingValve, setIsSubmittingValve] = useState<boolean>(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -279,6 +281,29 @@ export default function App() {
         setFirestoreStatusText(res.statusText);
       }
     }, 500);
+  }, []);
+
+  const persistStateImmediately = useCallback(async (nextState: AppState) => {
+    try {
+      localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(nextState));
+    } catch {
+      // Ignore storage quota errors
+    }
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    const res = await saveStateToFirestore(nextState);
+    if (res.ok) {
+      setFirestoreOnline(true);
+      setFirestoreStatusText(res.statusText);
+    } else if (res.statusText !== 'Modo Local') {
+      setFirestoreOnline(false);
+      setFirestoreStatusText(res.statusText);
+    }
+    return res;
   }, []);
 
   const applyRemoteState = useCallback((remote: Partial<AppState>) => {
@@ -473,33 +498,14 @@ export default function App() {
           (quaternary || '').replace(/\D+/g, '').trim() ||
           (match?.turno ? normalizeTurnoNumber(match.turno) : '1');
 
-        const makePlant = (num: number): PlantData => ({
-          id: `P-${num}`,
-          nombre: `Planta ${num}`,
-          cant_flujo1: 5,
-          cant_flujo2: 5,
-          cant_flujo3: 5,
-          induccion: 2,
-          inactivos: 1,
-          vigorosos: 7,
-          no_vigorosos: 2,
-          basales: 2,
-          retonos: 1,
-          dias: 7,
-          observaciones: 'Nueva muestra agregada',
-          flujo1: createDefaultShoots(28.0, 4.8),
-          flujo2: createDefaultShoots(24.0, 4.4),
-          flujo3: createDefaultShoots(20.0, 4.0),
-        });
-
         const newValve: ValveData = {
-          id: `V-${formattedNum}`,
+          id: `V-${formattedNum}-${Date.now()}`,
           nombre: valveName,
           modulo: modName,
           turno,
           fundo: 'Fundo Don Luis',
           variedad,
-          plantas: [makePlant(1), makePlant(2), makePlant(3)],
+          plantas: [createZeroPlant(1), createZeroPlant(2), createZeroPlant(3)],
         };
 
         const nextIdx = appState.valves.length;
@@ -634,28 +640,129 @@ export default function App() {
       const valves = prev.valves.map((v, idx) => {
         if (idx !== currentValveIndex) return v;
         const nextPNum = v.plantas.length + 1;
-        const newPlant: PlantData = {
-          id: `P-${nextPNum}`,
-          nombre: `Planta ${nextPNum}`,
-          cant_flujo1: 5,
-          cant_flujo2: 5,
-          cant_flujo3: 5,
-          induccion: 2,
-          inactivos: 1,
-          vigorosos: 6,
-          no_vigorosos: 1,
-          basales: 2,
-          retonos: 1,
-          dias: 7,
-          observaciones: 'Nueva planta agregada',
-          flujo1: createDefaultShoots(28.0, 4.8),
-          flujo2: createDefaultShoots(24.0, 4.4),
-          flujo3: createDefaultShoots(20.0, 4.0),
-        };
-        return { ...v, plantas: [...v.plantas, newPlant] };
+        return { ...v, plantas: [...v.plantas, createZeroPlant(nextPNum)] };
       });
       return { ...prev, valves };
     }, true);
+  };
+
+  const handleResetCurrentValveToZero = () => {
+    const target = appState.valves[currentValveIndex];
+    if (!target) return;
+    setDialogRequest({
+      mode: 'confirm',
+      title: 'Poner Válvula en 0',
+      message: `¿Deseas reiniciar en 0 todos los parámetros, brotes y longitudes de la Válvula ${target.nombre}?`,
+      onConfirm: () => {
+        updateStateAndPersist((prev) => {
+          const valves = prev.valves.map((v, idx) => {
+            if (idx !== currentValveIndex) return v;
+            const zeroPlants = v.plantas.map((p, pIdx) => ({
+              ...createZeroPlant(pIdx + 1),
+              id: p.id,
+              nombre: p.nombre,
+            }));
+            const { submittedAt: _removed, ...rest } = v;
+            void _removed;
+            return { ...rest, plantas: zeroPlants };
+          });
+          return { ...prev, valves };
+        }, true);
+        notify(`Válvula ${target.nombre} reiniciada con todos los valores en 0.`);
+      },
+    });
+  };
+
+  const handleSubmitAndNextValve = async () => {
+    if (isSubmittingValve) return;
+    const prev = latestStateRef.current;
+    const safeIdx =
+      currentValveIndex >= 0 && currentValveIndex < prev.valves.length ? currentValveIndex : 0;
+    const currValve = prev.valves[safeIdx];
+    if (!currValve) return;
+
+    setIsSubmittingValve(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const updatedExistingValves = prev.valves.map((v, idx) =>
+        idx === safeIdx ? { ...v, submittedAt: nowIso } : v,
+      );
+
+      const maxNum = updatedExistingValves.reduce((max, v) => {
+        const n = parseInt(normalizeValveNumber(v.nombre), 10);
+        return !Number.isNaN(n) && n > max ? n : max;
+      }, 0);
+      const currNum = parseInt(normalizeValveNumber(currValve.nombre), 10);
+      const nextNum = Math.max(maxNum, Number.isNaN(currNum) ? 0 : currNum) + 1;
+      const nextValveNum = nextNum < 10 ? `0${nextNum}` : `${nextNum}`;
+
+      const nextMod = currValve.modulo || '1';
+      const catalogMatch = getAutoCatalogMatch(masterCatalogRef.current, nextMod, nextValveNum);
+      const nextTurno = catalogMatch?.turno
+        ? normalizeTurnoNumber(catalogMatch.turno)
+        : currValve.turno !== undefined
+          ? currValve.turno
+          : resolveValveTurno(currValve, masterCatalogRef.current);
+      const nextVariedad = catalogMatch?.variedad || currValve.variedad || 'Ventura';
+
+      const newValve: ValveData = {
+        id: `V-${nextValveNum}-${Date.now()}`,
+        nombre: nextValveNum,
+        modulo: nextMod,
+        turno: nextTurno,
+        fundo: currValve.fundo || prev.fundo || 'Fundo Don Luis',
+        variedad: nextVariedad,
+        plantas: [createZeroPlant(1), createZeroPlant(2), createZeroPlant(3)],
+      };
+
+      const nextValves = [...updatedExistingValves, newValve];
+      const nextIdx = nextValves.length - 1;
+
+      const { updatedWeeklyData, updatedWeeklyTurnoData, updatedKpis } =
+        calculateMetricsAndWeeklyUpdate(
+          nextValves,
+          prev.weeklyModuleData,
+          prev.activeWeek,
+          prev.kpis,
+          prev.fechaEvaluacion,
+          prev.fechaAnterior,
+          prev.growthRateBasis,
+          prev.weeklyTurnoData || {},
+          masterCatalogRef.current,
+        );
+
+      const nextState: AppState = {
+        ...prev,
+        modulo: nextMod,
+        turno: nextTurno,
+        valvula: nextValveNum,
+        variedad: nextVariedad,
+        valves: nextValves,
+        weeklyModuleData: updatedWeeklyData,
+        weeklyTurnoData: updatedWeeklyTurnoData,
+        kpis: updatedKpis,
+      };
+
+      setAppState(nextState);
+      setCurrentValveIndex(nextIdx);
+      const res = await persistStateImmediately(nextState);
+
+      if (res.ok || res.statusText === 'Modo Local') {
+        notify(
+          `✓ Datos enviados: Válvula ${currValve.nombre} guardada. Siguiente Válvula ${nextValveNum} lista en 0.`,
+        );
+      } else {
+        notify(
+          `Guardado local listo (Válvula ${currValve.nombre}). Siguiente Válvula ${nextValveNum} en 0. Nota nube: ${res.statusText}`,
+        );
+      }
+
+      document
+        .getElementById('viewValveSection')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } finally {
+      setIsSubmittingValve(false);
+    }
   };
 
   const handleDeletePlantFromCurrentValve = (pIdx: number) => {
@@ -1209,6 +1316,9 @@ export default function App() {
             onUpdateShootValue={(pIdx, flushKey, bIdx, prop, val) =>
               handleUpdateShootValue(currentValveIndex, pIdx, flushKey, bIdx, prop, val)
             }
+            onSubmitAndNextValve={handleSubmitAndNextValve}
+            onResetCurrentValveToZero={handleResetCurrentValveToZero}
+            isSubmittingValve={isSubmittingValve}
           />
         )}
 

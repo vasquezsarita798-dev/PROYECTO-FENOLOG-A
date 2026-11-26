@@ -49,6 +49,9 @@ interface ValveViewProps {
     prop: 'longitud' | 'diametro',
     value: number,
   ) => void;
+  onSubmitAndNextValve: () => void;
+  onResetCurrentValveToZero: () => void;
+  isSubmittingValve?: boolean;
 }
 
 export const ValveView: React.FC<ValveViewProps> = ({
@@ -71,10 +74,24 @@ export const ValveView: React.FC<ValveViewProps> = ({
   onDeletePlantFromValve,
   onUpdatePlantField,
   onUpdateShootValue,
+  onSubmitAndNextValve,
+  onResetCurrentValveToZero,
+  isSubmittingValve = false,
 }) => {
   const modules = Array.from(new Set(valvesData.map((v) => v.modulo || '1')));
   const currentValve = valvesData[currentValveIndex];
   const diasTranscurridos = getDaysBetweenDates(fechaAnterior, fechaEvaluacion);
+
+  const formatSubmittedTime = (iso?: string) => {
+    if (!iso) return '';
+    try {
+      const dt = new Date(iso);
+      if (Number.isNaN(dt.getTime())) return '';
+      return dt.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '';
+    }
+  };
 
   return (
     <section id="viewValveSection">
@@ -113,8 +130,15 @@ export const ValveView: React.FC<ValveViewProps> = ({
               className={`valve-tab ${idx === currentValveIndex ? 'active' : ''}`}
               onClick={() => onSelectValve(idx)}
             >
-              <span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                 <i className="fa-solid fa-faucet-drip" /> Válvula {valve.nombre}
+                {valve.submittedAt && (
+                  <i
+                    className="fa-solid fa-circle-check"
+                    style={{ color: '#059669', fontSize: '0.8rem' }}
+                    title="Datos enviados"
+                  />
+                )}
               </span>
               <span
                 style={{
@@ -256,8 +280,37 @@ export const ValveView: React.FC<ValveViewProps> = ({
               </div>
             </>
           )}
+          {currentValve?.submittedAt && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: '#dcfce7',
+                color: '#166534',
+                border: '1px solid #86efac',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+              }}
+              title="Los datos de esta válvula ya fueron guardados y enviados"
+            >
+              <i className="fa-solid fa-circle-check" /> Datos enviados{' '}
+              {formatSubmittedTime(currentValve.submittedAt)
+                ? `(${formatSubmittedTime(currentValve.submittedAt)})`
+                : ''}
+            </span>
+          )}
           <button className="btn btn-sm btn-secondary" onClick={onAddPlantToValve}>
             <i className="fa-solid fa-plus" /> Agregar Planta a esta Válvula
+          </button>
+          <button
+            className="btn btn-sm btn-secondary"
+            onClick={onResetCurrentValveToZero}
+            title="Poner todos los números de esta válvula en 0"
+          >
+            <i className="fa-solid fa-eraser" /> Poner en 0
           </button>
           <button
             className="btn btn-sm btn-danger"
@@ -853,6 +906,88 @@ export const ValveView: React.FC<ValveViewProps> = ({
           );
         })}
       </div>
+
+      {currentValve && (
+        <div
+          style={{
+            marginTop: '18px',
+            background: currentValve.submittedAt ? '#f0fdf4' : '#ffffff',
+            border: `1.5px solid ${currentValve.submittedAt ? '#86efac' : '#cbd5e1'}`,
+            borderRadius: '14px',
+            padding: '14px 18px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            boxShadow: '0 2px 8px rgba(15, 23, 42, 0.05)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {currentValve.submittedAt ? (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#16a34a',
+                  color: '#ffffff',
+                  padding: '5px 12px',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                }}
+              >
+                <i className="fa-solid fa-circle-check" /> Datos enviados{' '}
+                {formatSubmittedTime(currentValve.submittedAt)
+                  ? `· ${formatSubmittedTime(currentValve.submittedAt)}`
+                  : ''}
+              </span>
+            ) : (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#eff6ff',
+                  color: '#1e40af',
+                  border: '1px solid #bfdbfe',
+                  padding: '5px 12px',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                }}
+              >
+                <i className="fa-solid fa-clipboard-check" /> Válvula {currentValve.nombre} lista para enviar
+              </span>
+            )}
+            <span style={{ fontSize: '0.82rem', color: '#475569' }}>
+              Al enviar, se guarda esta válvula en la nube y se abre la siguiente ficha con todos los campos en <strong>0</strong>.
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={onResetCurrentValveToZero}
+              title="Reiniciar todos los parámetros de la válvula actual a 0"
+            >
+              <i className="fa-solid fa-eraser" /> Poner esta Válvula en 0
+            </button>
+            <button
+              className="btn btn-success"
+              onClick={onSubmitAndNextValve}
+              disabled={isSubmittingValve}
+              style={{ fontWeight: 800, padding: '10px 18px' }}
+            >
+              <i className="fa-solid fa-paper-plane" />{' '}
+              {isSubmittingValve
+                ? 'Enviando...'
+                : 'Datos Enviados → Siguiente Válvula (en 0)'}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

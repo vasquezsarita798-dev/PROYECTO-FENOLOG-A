@@ -2,6 +2,7 @@ import type {
   ChecklistItem,
   KpiCard,
   MasterCatalogItem,
+  PlantData,
   ShootMeasurement,
   TableColumn,
   ValveData,
@@ -40,6 +41,35 @@ export function createDefaultShoots(baseLong: number, baseDiam: number): ShootMe
       diametro: +(baseDiam + (Math.random() * 0.5 - 0.25)).toFixed(1),
     },
   ];
+}
+
+export function createZeroShoots(): ShootMeasurement[] {
+  return [1, 2, 3, 4, 5].map((num) => ({
+    num,
+    longitud: 0,
+    diametro: 0,
+  }));
+}
+
+export function createZeroPlant(num: number): PlantData {
+  return {
+    id: `P-${num}`,
+    nombre: `Planta ${num}`,
+    cant_flujo1: 0,
+    cant_flujo2: 0,
+    cant_flujo3: 0,
+    induccion: 0,
+    inactivos: 0,
+    vigorosos: 0,
+    no_vigorosos: 0,
+    basales: 0,
+    retonos: 0,
+    dias: 7,
+    observaciones: '',
+    flujo1: createZeroShoots(),
+    flujo2: createZeroShoots(),
+    flujo3: createZeroShoots(),
+  };
 }
 
 export const DEFAULT_VALVES_DATA: ValveData[] = [
