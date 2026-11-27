@@ -87,6 +87,7 @@ export function exportToExcel(
         Válvula: v.nombre,
         Variedad: v.variedad,
         Planta: p.nombre,
+        'Altura_Planta(cm)': p.altura_planta === undefined ? '' : p.altura_planta,
         Total_Brotes_Planta: cantF1 + cantF2 + cantF3,
         Cant_Brotes_F1: cantF1,
         Cant_Brotes_F2: cantF2,
@@ -146,6 +147,7 @@ export function exportToExcel(
         'No Vigorosos': row.no_vigorosos,
         Basales: row.basales,
         Retoños: row.retonos,
+        'Altura Planta (cm)': row.altura_planta ?? '',
       });
     });
   });

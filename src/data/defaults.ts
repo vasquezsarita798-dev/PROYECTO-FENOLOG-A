@@ -64,6 +64,7 @@ export function createZeroPlant(num: number): PlantData {
     no_vigorosos: '',
     basales: '',
     retonos: '',
+    altura_planta: '',
     dias: 7,
     observaciones: '',
     flujo1: createZeroShoots(),
@@ -422,6 +423,7 @@ export const DEFAULT_COLUMNS: TableColumn[] = [
   { id: 'no_vigorosos', title: 'No Vigorosos', type: 'number', calcAvg: true, deletable: true },
   { id: 'basales', title: 'Brotes Basales', type: 'number', calcAvg: true, deletable: true },
   { id: 'retonos', title: 'Retoños', type: 'number', calcAvg: true, deletable: true },
+  { id: 'altura_planta', title: 'Altura Planta (cm)', type: 'number', calcAvg: true, deletable: true },
   { id: 'observaciones', title: 'Observaciones', type: 'text', deletable: true },
 ];
 

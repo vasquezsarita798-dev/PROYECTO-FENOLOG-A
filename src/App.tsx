@@ -76,6 +76,20 @@ import {
 } from './utils/calculations';
 import { exportToExcel } from './utils/excelExport';
 
+function ensureAlturaColumn(columns: TableColumn[]): TableColumn[] {
+  if (columns.some((c) => c.id === 'altura_planta')) return columns;
+  const alturaCol: TableColumn = {
+    id: 'altura_planta',
+    title: 'Altura Planta (cm)',
+    type: 'number',
+    calcAvg: true,
+    deletable: true,
+  };
+  const obsIdx = columns.findIndex((c) => c.id === 'observaciones');
+  if (obsIdx === -1) return [...columns, alturaCol];
+  return [...columns.slice(0, obsIdx), alturaCol, ...columns.slice(obsIdx)];
+}
+
 function loadInitialMasterCatalog(): MasterCatalogItem[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEY_CATALOG);
@@ -172,7 +186,7 @@ function buildInitialAppState(catalog: MasterCatalogItem[]): AppState {
         kpis: updatedKpis,
         columns:
           parsed.columns && parsed.columns.length > 0
-            ? parsed.columns
+            ? ensureAlturaColumn(parsed.columns)
             : JSON.parse(JSON.stringify(DEFAULT_COLUMNS)),
         titleTable: parsed.titleTable || DEFAULT_HEADER_METADATA.titleTable,
         titleCharts: parsed.titleCharts || DEFAULT_HEADER_METADATA.titleCharts,
@@ -482,7 +496,10 @@ export default function App() {
         weeklyTurnoData: updatedWeeklyTurnoData,
         activeWeek,
         kpis: updatedKpis,
-        columns: remote.columns && remote.columns.length > 0 ? remote.columns : prev.columns,
+        columns:
+          remote.columns && remote.columns.length > 0
+            ? ensureAlturaColumn(remote.columns)
+            : ensureAlturaColumn(prev.columns),
         titleTable: remote.titleTable || prev.titleTable,
         titleCharts: remote.titleCharts || prev.titleCharts,
         titleGrowthSummary: remote.titleGrowthSummary || prev.titleGrowthSummary,
@@ -1031,6 +1048,7 @@ export default function App() {
           if (colId === 'cant_f1') return { ...p, cant_flujo1: parsedInt };
           if (colId === 'cant_f2') return { ...p, cant_flujo2: parsedInt };
           if (colId === 'cant_f3') return { ...p, cant_flujo3: parsedInt };
+          if (colId === 'altura_planta') return { ...p, altura_planta: parsedFloat };
           if (colId === 'prev_long_prom') {
             return {
               ...p,

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface TopActionBarProps {
   isEditMode: boolean;
@@ -25,19 +25,42 @@ export const TopActionBar: React.FC<TopActionBarProps> = ({
   onOpenFirebaseConfig,
   onResetDefaults,
 }) => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <header className="top-action-bar">
-      <div className="brand-badge">
-        <div className="brand-icon">
-          <i className="fa-solid fa-seedling" />
+      <div className="top-bar-brand-row">
+        <div className="brand-badge">
+          <div className="brand-icon">
+            <i className="fa-solid fa-seedling" />
+          </div>
+          <div>
+            <div className="brand-title">REITER PERUVIAN BERRY</div>
+            <div className="brand-subtitle">Fenología &amp; Fisiología del Arándano</div>
+          </div>
         </div>
-        <div>
-          <div className="brand-title">REITER PERUVIAN BERRY</div>
-          <div className="brand-subtitle">Fenología &amp; Fisiología del Arándano</div>
+
+        <div className="mobile-bar-quick-actions">
+          <button
+            className="btn btn-success btn-sm"
+            onClick={onExportExcel}
+            title="Descargar como archivo Excel (.xlsx)"
+          >
+            <i className="fa-solid fa-file-excel" /> Excel
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            aria-expanded={mobileMenuOpen}
+            title="Mostrar u ocultar herramientas"
+          >
+            <i className={`fa-solid ${mobileMenuOpen ? 'fa-chevron-up' : 'fa-bars'}`} />{' '}
+            {mobileMenuOpen ? 'Ocultar' : 'Menú'}
+          </button>
         </div>
       </div>
 
-      <div className="bar-buttons">
+      <div className={`bar-buttons ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <button
           className={`btn btn-edit-mode ${isEditMode ? 'active' : ''}`}
           id="btnToggleEdit"
@@ -78,7 +101,7 @@ export const TopActionBar: React.FC<TopActionBarProps> = ({
         </button>
 
         <button
-          className="btn btn-success"
+          className="btn btn-success desktop-excel-btn"
           onClick={onExportExcel}
           title="Descargar como archivo Excel (.xlsx) con hojas detalladas"
         >

@@ -27,6 +27,7 @@ export interface PlantData {
   no_vigorosos: NumericInput;
   basales: NumericInput;
   retonos: NumericInput;
+  altura_planta?: NumericInput;
   dias: number;
   observaciones: string;
   flujo1: ShootMeasurement[];
@@ -60,6 +61,7 @@ export interface WeeklyModuleStats {
   no_vigorosos: number;
   basales: number;
   retonos: number;
+  altura_planta?: number;
   tasa_global?: number;
   tasa_f1?: number;
   tasa_f2?: number;
@@ -87,6 +89,7 @@ export interface WeeklyTurnoStats {
   no_vigorosos?: number;
   basales?: number;
   retonos?: number;
+  altura_planta?: number;
 }
 
 export type WeeklyTurnoData = Record<string, Record<string, WeeklyTurnoStats>>;
@@ -163,6 +166,7 @@ export interface FlattenedPlantRow {
   no_vigorosos: number;
   basales: number;
   retonos: number;
+  altura_planta: number;
   total_brotes: number;
   observaciones: string;
   [key: string]: string | number;

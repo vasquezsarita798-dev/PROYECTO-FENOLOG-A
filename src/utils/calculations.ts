@@ -397,6 +397,7 @@ export function getFlattenedPlantRows(
         no_vigorosos: toNumericValue(plant.no_vigorosos, 0),
         basales: toNumericValue(plant.basales, 0),
         retonos: toNumericValue(plant.retonos, 0),
+        altura_planta: toNumericValue(plant.altura_planta, 0),
         total_brotes: totalBrotes,
         observaciones: plant.observaciones || '',
       });
@@ -466,6 +467,7 @@ export function calculateMetricsAndWeeklyUpdate(
       noVigSum: number;
       basSum: number;
       retSum: number;
+      alturaSum: number;
       tasaGlobalSum: number;
       tasaF1Sum: number;
       tasaF2Sum: number;
@@ -491,6 +493,7 @@ export function calculateMetricsAndWeeklyUpdate(
       noVigSum: number;
       basSum: number;
       retSum: number;
+      alturaSum: number;
       tasaGlobalSum: number;
       tasaF1Sum: number;
       tasaF2Sum: number;
@@ -533,6 +536,7 @@ export function calculateMetricsAndWeeklyUpdate(
         noVigSum: 0,
         basSum: 0,
         retSum: 0,
+        alturaSum: 0,
         tasaGlobalSum: 0,
         tasaF1Sum: 0,
         tasaF2Sum: 0,
@@ -553,6 +557,7 @@ export function calculateMetricsAndWeeklyUpdate(
     modSums[m].noVigSum += r.no_vigorosos;
     modSums[m].basSum += r.basales;
     modSums[m].retSum += r.retonos;
+    modSums[m].alturaSum += r.altura_planta;
     modSums[m].tasaGlobalSum += tasaGlobalPlant;
     modSums[m].tasaF1Sum += r.tasa_f1;
     modSums[m].tasaF2Sum += r.tasa_f2;
@@ -576,6 +581,7 @@ export function calculateMetricsAndWeeklyUpdate(
         noVigSum: 0,
         basSum: 0,
         retSum: 0,
+        alturaSum: 0,
         tasaGlobalSum: 0,
         tasaF1Sum: 0,
         tasaF2Sum: 0,
@@ -596,6 +602,7 @@ export function calculateMetricsAndWeeklyUpdate(
     turnoSums[mtKey].noVigSum += r.no_vigorosos;
     turnoSums[mtKey].basSum += r.basales;
     turnoSums[mtKey].retSum += r.retonos;
+    turnoSums[mtKey].alturaSum += r.altura_planta;
     turnoSums[mtKey].tasaGlobalSum += tasaGlobalPlant;
     turnoSums[mtKey].tasaF1Sum += r.tasa_f1;
     turnoSums[mtKey].tasaF2Sum += r.tasa_f2;
@@ -630,6 +637,7 @@ export function calculateMetricsAndWeeklyUpdate(
       no_vigorosos: +(mc.noVigSum / mc.count).toFixed(1),
       basales: +(mc.basSum / mc.count).toFixed(1),
       retonos: +(mc.retSum / mc.count).toFixed(1),
+      altura_planta: +(mc.alturaSum / mc.count).toFixed(1),
       tasa_global: +(mc.tasaGlobalSum / mc.count).toFixed(2),
       tasa_f1: +(mc.tasaF1Sum / mc.count).toFixed(2),
       tasa_f2: +(mc.tasaF2Sum / mc.count).toFixed(2),
@@ -655,6 +663,7 @@ export function calculateMetricsAndWeeklyUpdate(
       no_vigorosos: +(tc.noVigSum / tc.count).toFixed(1),
       basales: +(tc.basSum / tc.count).toFixed(1),
       retonos: +(tc.retSum / tc.count).toFixed(1),
+      altura_planta: +(tc.alturaSum / tc.count).toFixed(1),
       tasa_global: +(tc.tasaGlobalSum / tc.count).toFixed(2),
       tasa_f1: +(tc.tasaF1Sum / tc.count).toFixed(2),
       tasa_f2: +(tc.tasaF2Sum / tc.count).toFixed(2),

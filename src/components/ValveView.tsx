@@ -599,6 +599,22 @@ export const ValveView: React.FC<ValveViewProps> = ({
                     }
                   />
                 </div>
+                <div className="param-box">
+                  <span className="param-label">
+                    <i className="fa-solid fa-ruler-vertical" style={{ color: '#0284c7' }} /> Altura
+                    Planta (cm)
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    className="param-input"
+                    value={plant.altura_planta ?? ''}
+                    onChange={(e) =>
+                      onUpdatePlantField(pIdx, 'altura_planta', parseDecimalInput(e.target.value))
+                    }
+                  />
+                </div>
               </div>
 
               {/* 1er FLUJO */}
