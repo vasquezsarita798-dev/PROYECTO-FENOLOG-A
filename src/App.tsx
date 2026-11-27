@@ -252,6 +252,8 @@ export default function App() {
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingLocalSaveRef = useRef<boolean>(false);
   const lastLocalEditAtRef = useRef<number>(0);
+  const dirtyValveIdsRef = useRef<Set<string>>(new Set());
+  const fullValveSyncPendingRef = useRef<boolean>(false);
   const latestStateRef = useRef<AppState>(appState);
   latestStateRef.current = appState;
   const masterCatalogRef = useRef<MasterCatalogItem[]>(masterCatalog);
@@ -267,6 +269,65 @@ export default function App() {
     }, 4500);
   }, []);
 
+  const mergeRemoteAndLocalValves = useCallback(
+    (
+      prevValves: ValveData[],
+      remote: Partial<AppState>,
+      prevDeletedIds: string[] = [],
+      protectedIds: Set<string> = new Set(),
+    ): { valves: ValveData[]; deletedValveIds: string[] } => {
+      const mergedDeleted = Array.from(
+        new Set([...prevDeletedIds, ...(remote.deletedValveIds || [])]),
+      );
+      const deletedSet = new Set(mergedDeleted);
+
+      const remoteMap = new Map<string, ValveData>();
+      (remote.valves || []).forEach((v) => {
+        if (v && v.id && !deletedSet.has(v.id)) {
+          remoteMap.set(v.id, v);
+        }
+      });
+      Object.entries(remote.valvesById || {}).forEach(([id, v]) => {
+        if (!v || deletedSet.has(id)) return;
+        const existing = remoteMap.get(id);
+        if (!existing || (v.updatedAt || 0) >= (existing.updatedAt || 0)) {
+          remoteMap.set(id, v);
+        }
+      });
+
+      const mergedMap = new Map<string, ValveData>();
+      prevValves.forEach((lv) => {
+        if (!deletedSet.has(lv.id)) {
+          mergedMap.set(lv.id, lv);
+        }
+      });
+
+      remoteMap.forEach((rv, id) => {
+        const lv = mergedMap.get(id);
+        if (!lv) {
+          mergedMap.set(id, rv);
+          return;
+        }
+        const localTime = lv.updatedAt || 0;
+        const remoteTime = rv.updatedAt || 0;
+        if (protectedIds.has(id) && localTime >= remoteTime) {
+          return;
+        }
+        if (remoteTime > localTime || (lv.updatedAt === undefined && rv.updatedAt !== undefined)) {
+          mergedMap.set(id, rv);
+        } else if (remoteTime === 0 && localTime === 0 && !protectedIds.has(id)) {
+          mergedMap.set(id, rv);
+        }
+      });
+
+      return {
+        valves: normalizeValvesList(Array.from(mergedMap.values()), masterCatalogRef.current),
+        deletedValveIds: mergedDeleted,
+      };
+    },
+    [],
+  );
+
   const persistState = useCallback((nextState: AppState) => {
     lastLocalEditAtRef.current = Date.now();
     pendingLocalSaveRef.current = true;
@@ -280,7 +341,12 @@ export default function App() {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(async () => {
       saveTimeoutRef.current = null;
-      const res = await saveStateToFirestore(nextState);
+      const useFull = fullValveSyncPendingRef.current;
+      const dirtyIds = useFull ? undefined : Array.from(dirtyValveIdsRef.current);
+      fullValveSyncPendingRef.current = false;
+      dirtyValveIdsRef.current.clear();
+
+      const res = await saveStateToFirestore(nextState, dirtyIds);
       pendingLocalSaveRef.current = false;
       if (res.ok) {
         setFirestoreOnline(true);
@@ -292,44 +358,59 @@ export default function App() {
     }, 500);
   }, []);
 
-  const persistStateImmediately = useCallback(async (nextState: AppState) => {
-    lastLocalEditAtRef.current = Date.now();
-    pendingLocalSaveRef.current = true;
+  const persistStateImmediately = useCallback(
+    async (nextState: AppState, forceFull = false) => {
+      lastLocalEditAtRef.current = Date.now();
+      pendingLocalSaveRef.current = true;
 
-    try {
-      localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(nextState));
-    } catch {
-      // Ignore storage quota errors
-    }
+      try {
+        localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(nextState));
+      } catch {
+        // Ignore storage quota errors
+      }
 
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-    }
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
 
-    const res = await saveStateToFirestore(nextState);
-    pendingLocalSaveRef.current = false;
-    if (res.ok) {
-      setFirestoreOnline(true);
-      setFirestoreStatusText(res.statusText);
-    } else if (res.statusText !== 'Modo Local') {
-      setFirestoreOnline(false);
-      setFirestoreStatusText(res.statusText);
-    }
-    return res;
-  }, []);
+      const useFull = forceFull || fullValveSyncPendingRef.current;
+      const dirtyIds = useFull ? undefined : Array.from(dirtyValveIdsRef.current);
+      fullValveSyncPendingRef.current = false;
+      dirtyValveIdsRef.current.clear();
 
-  const applyRemoteState = useCallback((remote: Partial<AppState>, force = false) => {
-    if (!remote) return;
-    if (
-      !force &&
-      (pendingLocalSaveRef.current || Date.now() - lastLocalEditAtRef.current < 2000)
-    ) {
-      return;
-    }
-    setAppState((prev) => {
-      const rawValves = remote.valves && remote.valves.length > 0 ? remote.valves : prev.valves;
-      const valves = normalizeValvesList(rawValves, masterCatalogRef.current);
+      const res = await saveStateToFirestore(nextState, dirtyIds);
+      pendingLocalSaveRef.current = false;
+      if (res.ok) {
+        setFirestoreOnline(true);
+        setFirestoreStatusText(res.statusText);
+      } else if (res.statusText !== 'Modo Local') {
+        setFirestoreOnline(false);
+        setFirestoreStatusText(res.statusText);
+      }
+      return res;
+    },
+    [],
+  );
+
+  const buildMergedState = useCallback(
+    (prev: AppState, remote: Partial<AppState>, force = false): AppState => {
+      const recentlyEdited =
+        !force &&
+        (pendingLocalSaveRef.current || Date.now() - lastLocalEditAtRef.current < 2500);
+      const protectedIds = new Set<string>(dirtyValveIdsRef.current);
+      if (recentlyEdited) {
+        const currValve = prev.valves[currentValveIndexRef.current];
+        if (currValve) protectedIds.add(currValve.id);
+      }
+
+      const { valves, deletedValveIds } = mergeRemoteAndLocalValves(
+        prev.valves,
+        remote,
+        prev.deletedValveIds || [],
+        protectedIds,
+      );
+
       const weekly = remote.weeklyModuleData
         ? normalizeWeeklyModuleData(remote.weeklyModuleData)
         : prev.weeklyModuleData;
@@ -375,7 +456,7 @@ export default function App() {
         activeValve.variedad = remote.variedad.trim();
       }
 
-      const merged: AppState = {
+      return {
         ...prev,
         companyTitle: remote.companyTitle || prev.companyTitle,
         reportTitle: remote.reportTitle || prev.reportTitle,
@@ -396,6 +477,7 @@ export default function App() {
         evaluador: remote.evaluador || prev.evaluador,
         notes: remote.notes !== undefined ? remote.notes : prev.notes,
         valves,
+        deletedValveIds,
         weeklyModuleData: updatedWeeklyData,
         weeklyTurnoData: updatedWeeklyTurnoData,
         activeWeek,
@@ -410,16 +492,27 @@ export default function App() {
           remote.checklist && remote.checklist.length > 0 ? remote.checklist : prev.checklist,
         customSections: remote.customSections || prev.customSections,
       };
-      try {
-        localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(merged));
-      } catch {
-        // ignore
-      }
-      return merged;
-    });
-  }, []);
+    },
+    [mergeRemoteAndLocalValves],
+  );
 
-  // Initialize Firestore & realtime listener on mount
+  const applyRemoteState = useCallback(
+    (remote: Partial<AppState>, force = false) => {
+      if (!remote) return;
+      setAppState((prev) => {
+        const merged = buildMergedState(prev, remote, force);
+        try {
+          localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(merged));
+        } catch {
+          // ignore
+        }
+        return merged;
+      });
+    },
+    [buildMergedState],
+  );
+
+  // Initialize Firestore & realtime listener on mount + flush on mobile app switch/lock
   useEffect(() => {
     const init = initFirestoreClient();
     setFirestoreOnline(init.online);
@@ -438,12 +531,28 @@ export default function App() {
       },
     );
 
+    const flushOnLeave = () => {
+      if (saveTimeoutRef.current || dirtyValveIdsRef.current.size > 0 || fullValveSyncPendingRef.current) {
+        void persistStateImmediately(latestStateRef.current);
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushOnLeave();
+      }
+    };
+
+    window.addEventListener('pagehide', flushOnLeave);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
+      window.removeEventListener('pagehide', flushOnLeave);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (unsubscribe) unsubscribe();
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     };
-  }, [applyRemoteState]);
+  }, [applyRemoteState, persistStateImmediately]);
 
   const updateStateAndPersist = useCallback(
     (updater: (prev: AppState) => AppState, recalculate = false) => {
@@ -524,8 +633,10 @@ export default function App() {
           turno,
           fundo: 'Fundo Don Luis',
           variedad,
+          updatedAt: Date.now(),
           plantas: [createZeroPlant(1), createZeroPlant(2), createZeroPlant(3)],
         };
+        dirtyValveIdsRef.current.add(newValve.id);
 
         const nextIdx = appState.valves.length;
         updateStateAndPersist(
@@ -553,7 +664,7 @@ export default function App() {
     setCurrentValveIndex(idx);
     const v = appState.valves[idx];
     if (v) {
-      updateStateAndPersist((prev) => ({
+      setAppState((prev) => ({
         ...prev,
         modulo: v.modulo,
         turno: v.turno !== undefined ? v.turno : resolveValveTurno(v, masterCatalog),
@@ -568,9 +679,12 @@ export default function App() {
     field: 'modulo' | 'turno' | 'nombre' | 'variedad',
     value: string,
   ) => {
+    const targetValve = latestStateRef.current.valves[vIdx];
+    if (targetValve) dirtyValveIdsRef.current.add(targetValve.id);
+    const now = Date.now();
     updateStateAndPersist((prev) => {
       const valves = prev.valves.map((v, idx) =>
-        idx === vIdx ? { ...v, [field]: value } : v,
+        idx === vIdx ? { ...v, [field]: value, updatedAt: now } : v,
       );
       if (vIdx !== currentValveIndex) {
         return { ...prev, valves };
@@ -603,6 +717,11 @@ export default function App() {
   ) => {
     const syncsValve =
       field === 'modulo' || field === 'turno' || field === 'valvula' || field === 'variedad';
+    if (syncsValve) {
+      const targetValve = latestStateRef.current.valves[currentValveIndex];
+      if (targetValve) dirtyValveIdsRef.current.add(targetValve.id);
+    }
+    const now = Date.now();
 
     updateStateAndPersist((prev) => {
       if (!syncsValve) {
@@ -611,7 +730,7 @@ export default function App() {
       const valveField: 'modulo' | 'turno' | 'nombre' | 'variedad' =
         field === 'valvula' ? 'nombre' : field;
       const valves = prev.valves.map((v, idx) =>
-        idx === currentValveIndex ? { ...v, [valveField]: value } : v,
+        idx === currentValveIndex ? { ...v, [valveField]: value, updatedAt: now } : v,
       );
       return {
         ...prev,
@@ -633,6 +752,8 @@ export default function App() {
       title: 'Eliminar Válvula',
       message: `¿Estás seguro de eliminar Válvula ${target.nombre}?`,
       onConfirm: () => {
+        fullValveSyncPendingRef.current = true;
+        dirtyValveIdsRef.current.delete(target.id);
         const nextIdx =
           currentValveIndex >= appState.valves.length - 1
             ? Math.max(0, appState.valves.length - 2)
@@ -640,6 +761,9 @@ export default function App() {
         updateStateAndPersist((prev) => {
           const nextValves = prev.valves.filter((_, i) => i !== idx);
           const nextActive = nextValves[nextIdx] || nextValves[0];
+          const deletedValveIds = Array.from(
+            new Set([...(prev.deletedValveIds || []), target.id]),
+          );
           return {
             ...prev,
             modulo: nextActive ? nextActive.modulo : prev.modulo,
@@ -647,6 +771,7 @@ export default function App() {
             valvula: nextActive ? nextActive.nombre : prev.valvula,
             variedad: nextActive ? nextActive.variedad : prev.variedad,
             valves: nextValves,
+            deletedValveIds,
           };
         }, true);
         setCurrentValveIndex(nextIdx);
@@ -655,11 +780,14 @@ export default function App() {
   };
 
   const handleAddPlantToCurrentValve = () => {
+    const targetValve = latestStateRef.current.valves[currentValveIndex];
+    if (targetValve) dirtyValveIdsRef.current.add(targetValve.id);
+    const now = Date.now();
     updateStateAndPersist((prev) => {
       const valves = prev.valves.map((v, idx) => {
         if (idx !== currentValveIndex) return v;
         const nextPNum = v.plantas.length + 1;
-        return { ...v, plantas: [...v.plantas, createZeroPlant(nextPNum)] };
+        return { ...v, updatedAt: now, plantas: [...v.plantas, createZeroPlant(nextPNum)] };
       });
       return { ...prev, valves };
     }, true);
@@ -673,6 +801,8 @@ export default function App() {
       title: 'Vaciar Ficha de Válvula',
       message: `¿Deseas dejar vacíos todos los espacios de parámetros, brotes y longitudes de la Válvula ${target.nombre}?`,
       onConfirm: () => {
+        dirtyValveIdsRef.current.add(target.id);
+        const now = Date.now();
         updateStateAndPersist((prev) => {
           const valves = prev.valves.map((v, idx) => {
             if (idx !== currentValveIndex) return v;
@@ -683,7 +813,7 @@ export default function App() {
             }));
             const { submittedAt: _removed, ...rest } = v;
             void _removed;
-            return { ...rest, plantas: zeroPlants };
+            return { ...rest, updatedAt: now, plantas: zeroPlants };
           });
           return { ...prev, valves };
         }, true);
@@ -702,9 +832,10 @@ export default function App() {
 
     setIsSubmittingValve(true);
     try {
-      const nowIso = new Date().toISOString();
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
       const updatedExistingValves = prev.valves.map((v, idx) =>
-        idx === safeIdx ? { ...v, submittedAt: nowIso } : v,
+        idx === safeIdx ? { ...v, submittedAt: nowIso, updatedAt: nowMs } : v,
       );
 
       const maxNum = updatedExistingValves.reduce((max, v) => {
@@ -725,14 +856,18 @@ export default function App() {
       const nextVariedad = catalogMatch?.variedad || currValve.variedad || 'Ventura';
 
       const newValve: ValveData = {
-        id: `V-${nextValveNum}-${Date.now()}`,
+        id: `V-${nextValveNum}-${nowMs}-${Math.floor(Math.random() * 1000)}`,
         nombre: nextValveNum,
         modulo: nextMod,
         turno: nextTurno,
         fundo: currValve.fundo || prev.fundo || 'Fundo Don Luis',
         variedad: nextVariedad,
+        updatedAt: nowMs,
         plantas: [createZeroPlant(1), createZeroPlant(2), createZeroPlant(3)],
       };
+
+      dirtyValveIdsRef.current.add(currValve.id);
+      dirtyValveIdsRef.current.add(newValve.id);
 
       const nextValves = [...updatedExistingValves, newValve];
       const nextIdx = nextValves.length - 1;
@@ -767,7 +902,7 @@ export default function App() {
       const res = await persistStateImmediately(nextState);
 
       if (res.ok || res.statusText === 'Modo Local') {
-        const msg = `✓ Datos enviados: Válvula ${currValve.nombre} guardada en Firestore. Ahora estás llenando la nueva Válvula ${nextValveNum} (espacios vacíos).`;
+        const msg = `✓ Datos enviados: Válvula ${currValve.nombre} guardada (${res.statusText}). Ahora estás llenando la nueva Válvula ${nextValveNum} (espacios vacíos).`;
         setLastSubmissionNotice(msg);
         notify(msg);
       } else {
@@ -796,10 +931,12 @@ export default function App() {
       title: 'Eliminar Planta',
       message: `¿Eliminar la ${v.plantas[pIdx].nombre}?`,
       onConfirm: () => {
+        dirtyValveIdsRef.current.add(v.id);
+        const now = Date.now();
         updateStateAndPersist((prev) => {
           const valves = prev.valves.map((valve, idx) => {
             if (idx !== currentValveIndex) return valve;
-            return { ...valve, plantas: valve.plantas.filter((_, i) => i !== pIdx) };
+            return { ...valve, updatedAt: now, plantas: valve.plantas.filter((_, i) => i !== pIdx) };
           });
           return { ...prev, valves };
         }, true);
@@ -812,11 +949,14 @@ export default function App() {
     field: K,
     value: PlantData[K],
   ) => {
+    const targetValve = latestStateRef.current.valves[currentValveIndex];
+    if (targetValve) dirtyValveIdsRef.current.add(targetValve.id);
+    const now = Date.now();
     updateStateAndPersist((prev) => {
       const valves = prev.valves.map((v, vIdx) => {
         if (vIdx !== currentValveIndex) return v;
         const plantas = v.plantas.map((p, i) => (i === pIdx ? { ...p, [field]: value } : p));
-        return { ...v, plantas };
+        return { ...v, updatedAt: now, plantas };
       });
       return { ...prev, valves };
     }, true);
@@ -830,6 +970,9 @@ export default function App() {
     prop: 'longitud' | 'diametro',
     value: NumericInput,
   ) => {
+    const targetValve = latestStateRef.current.valves[vIdx];
+    if (targetValve) dirtyValveIdsRef.current.add(targetValve.id);
+    const now = Date.now();
     updateStateAndPersist((prev) => {
       const valves = prev.valves.map((v, vi) => {
         if (vi !== vIdx) return v;
@@ -841,21 +984,24 @@ export default function App() {
           );
           return { ...p, [flushKey]: updatedFlush };
         });
-        return { ...v, plantas };
+        return { ...v, updatedAt: now, plantas };
       });
       return { ...prev, valves };
     }, true);
   };
 
   const handleUpdateFlatCell = (vIdx: number, pIdx: number, colId: string, value: string) => {
+    const targetValve = latestStateRef.current.valves[vIdx];
+    if (targetValve) dirtyValveIdsRef.current.add(targetValve.id);
+    const now = Date.now();
     updateStateAndPersist((prev) => {
       const cleanDigits = value.replace(/\D+/g, '');
       const valves = prev.valves.map((v, vi) => {
         if (vi !== vIdx) return v;
-        if (colId === 'modulo') return { ...v, modulo: cleanDigits };
-        if (colId === 'turno') return { ...v, turno: cleanDigits };
-        if (colId === 'variedad') return { ...v, variedad: value };
-        if (colId === 'valvula') return { ...v, nombre: cleanDigits };
+        if (colId === 'modulo') return { ...v, modulo: cleanDigits, updatedAt: now };
+        if (colId === 'turno') return { ...v, turno: cleanDigits, updatedAt: now };
+        if (colId === 'variedad') return { ...v, variedad: value, updatedAt: now };
+        if (colId === 'valvula') return { ...v, nombre: cleanDigits, updatedAt: now };
 
         const trimmed = value.trim();
         const isEmpty = trimmed === '';
@@ -903,7 +1049,7 @@ export default function App() {
             },
           };
         });
-        return { ...v, plantas };
+        return { ...v, updatedAt: now, plantas };
       });
 
       if (
@@ -1180,19 +1326,51 @@ export default function App() {
     });
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     try {
+      let stateForExport = latestStateRef.current;
+
+      if (
+        saveTimeoutRef.current ||
+        dirtyValveIdsRef.current.size > 0 ||
+        fullValveSyncPendingRef.current
+      ) {
+        await persistStateImmediately(stateForExport);
+      }
+
+      if (hasConfiguredFirebaseKey()) {
+        try {
+          const remoteRes = await Promise.race([
+            reloadStateFromFirestore(),
+            new Promise<{ exists: false }>((resolve) =>
+              setTimeout(() => resolve({ exists: false }), 2500),
+            ),
+          ]);
+          if (remoteRes.exists && 'data' in remoteRes && remoteRes.data) {
+            stateForExport = buildMergedState(stateForExport, remoteRes.data, false);
+            setAppState(stateForExport);
+            try {
+              localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(stateForExport));
+            } catch {
+              // ignore
+            }
+          }
+        } catch {
+          // Export with current local state if cloud lookup times out
+        }
+      }
+
       exportToExcel(
-        appState.valves,
-        appState.columns,
-        appState.weeklyModuleData,
-        appState.weeklyTurnoData || {},
-        appState.weeklyDates,
+        stateForExport.valves,
+        stateForExport.columns,
+        stateForExport.weeklyModuleData,
+        stateForExport.weeklyTurnoData || {},
+        stateForExport.weeklyDates,
         masterCatalog,
-        appState.activeWeek,
-        appState.fechaEvaluacion,
-        appState.fechaAnterior,
-        appState.growthRateBasis,
+        stateForExport.activeWeek,
+        stateForExport.fechaEvaluacion,
+        stateForExport.fechaAnterior,
+        stateForExport.growthRateBasis,
       );
       notify('Archivo Excel (.xlsx) descargado correctamente.');
     } catch (err) {

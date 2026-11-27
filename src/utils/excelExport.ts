@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { createDefaultShoots } from '../data/defaults';
+import { createZeroShoots } from '../data/defaults';
 import type {
   GrowthRateBasis,
   MasterCatalogItem,
@@ -74,7 +74,7 @@ export function exportToExcel(
   const wsShootsData: Record<string, string | number | undefined>[] = [];
   valvesData.forEach((v) => {
     v.plantas.forEach((p) => {
-      const f2 = p.flujo2 || createDefaultShoots(25.0, 4.5);
+      const f2 = p.flujo2 || createZeroShoots();
       const cantF1 = p.cant_flujo1 !== undefined ? toNumericValue(p.cant_flujo1, 0) : 5;
       const cantF2 = p.cant_flujo2 !== undefined ? toNumericValue(p.cant_flujo2, 0) : 5;
       const cantF3 = p.cant_flujo3 !== undefined ? toNumericValue(p.cant_flujo3, 0) : 5;
@@ -184,6 +184,29 @@ export function exportToExcel(
   XLSX.utils.book_append_sheet(wb, wsWeekly, 'Historico_Semanal_Modulo');
   XLSX.utils.book_append_sheet(wb, wsRates, 'Tasa_Crec_Modulo');
 
-  const fileName = `Reiter_Fenologia_Sem${activeWeek}_${fechaEvaluacion || new Date().toISOString().slice(0, 10)}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const datePart = fechaEvaluacion || now.toISOString().slice(0, 10);
+  const fileName = `Reiter_Fenologia_Sem${activeWeek}_${datePart}_${hh}-${mm}.xlsx`;
+
+  try {
+    const wbArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbArray], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 10000);
+  } catch {
+    XLSX.writeFile(wb, fileName);
+  }
 }

@@ -118,7 +118,10 @@ export function subscribeToEvaluationDoc(
   }
 }
 
-export async function saveStateToFirestore(state: AppState): Promise<{
+export async function saveStateToFirestore(
+  state: AppState,
+  dirtyValveIds?: string[],
+): Promise<{
   ok: boolean;
   statusText: string;
   errorMessage?: string;
@@ -129,31 +132,77 @@ export async function saveStateToFirestore(state: AppState): Promise<{
 
   try {
     const cleanState = JSON.parse(JSON.stringify(state)) as AppState;
+    const {
+      valves: _allValves,
+      valvesById: _ignoredMap,
+      ...metadataWithoutValves
+    } = cleanState;
+    void _ignoredMap;
+
+    const dirtySet =
+      dirtyValveIds && dirtyValveIds.length > 0 ? new Set(dirtyValveIds) : null;
+    const partialValvesById: Record<string, AppState['valves'][number]> = {};
+    cleanState.valves.forEach((v) => {
+      if (!dirtySet || dirtySet.has(v.id)) {
+        partialValvesById[v.id] = v;
+      }
+    });
+
+    const payload: Record<string, unknown> = {
+      ...metadataWithoutValves,
+      ultimaActualizacion: serverTimestamp(),
+    };
+
+    // Only write the full valves array on initial/full saves (when dirtySet is null);
+    // during targeted phone edits, merge only the modified valves under valvesById so
+    // simultaneous phones editing other valves never overwrite each other.
+    if (!dirtySet) {
+      payload.valves = _allValves;
+    }
+    if (Object.keys(partialValvesById).length > 0) {
+      payload.valvesById = partialValvesById;
+    }
+
     const evalDocRef = doc(firestoreDb, 'evaluaciones', 'reiter_fenologia');
-    await setDoc(
-      evalDocRef,
-      {
-        ...cleanState,
-        ultimaActualizacion: serverTimestamp(),
-      },
-      { merge: true },
-    );
+    const writeEvalPromise = setDoc(evalDocRef, payload, { merge: true });
 
     const safeWeek = (cleanState.activeWeek || '').trim();
-    if (safeWeek) {
-      const histCollection = collection(firestoreDb, 'evaluaciones_historicas');
-      const histDocRef = doc(histCollection, safeWeek);
-      await setDoc(
-        histDocRef,
-        {
-          semana: safeWeek,
-          valves: cleanState.valves,
-          fecha: new Date().toISOString(),
-          fundo: cleanState.fundo || '',
-          modulo: cleanState.modulo || '',
-        },
-        { merge: true },
-      );
+    const histPayload: Record<string, unknown> = {
+      semana: safeWeek,
+      fecha: new Date().toISOString(),
+      fundo: cleanState.fundo || '',
+      modulo: cleanState.modulo || '',
+    };
+    if (!dirtySet) {
+      histPayload.valves = _allValves;
+    }
+    if (Object.keys(partialValvesById).length > 0) {
+      histPayload.valvesById = partialValvesById;
+    }
+
+    const writeHistPromise = safeWeek
+      ? setDoc(
+          doc(collection(firestoreDb, 'evaluaciones_historicas'), safeWeek),
+          histPayload,
+          { merge: true },
+        )
+      : Promise.resolve();
+
+    // Wait up to 6s so weak mobile signal does not leave the UI stuck in "Enviando..."
+    // (Firestore's persistentLocalCache still queues and syncs the write in the background).
+    const timeoutMarker = Symbol('timeout');
+    const result = await Promise.race([
+      Promise.all([writeEvalPromise, writeHistPromise]).then(() => 'ok' as const),
+      new Promise<typeof timeoutMarker>((resolve) =>
+        setTimeout(() => resolve(timeoutMarker), 6000),
+      ),
+    ]);
+
+    if (result === timeoutMarker) {
+      return {
+        ok: true,
+        statusText: 'En cola (se sincronizará al mejorar la señal)',
+      };
     }
 
     return { ok: true, statusText: 'Sincronizado' };

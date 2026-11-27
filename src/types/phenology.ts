@@ -43,6 +43,7 @@ export interface ValveData {
   fundo: string;
   variedad: string;
   submittedAt?: string;
+  updatedAt?: number;
   plantas: PlantData[];
 }
 
@@ -183,6 +184,8 @@ export interface AppState {
   evaluador: string;
   notes: string;
   valves: ValveData[];
+  valvesById?: Record<string, ValveData>;
+  deletedValveIds?: string[];
   weeklyModuleData: WeeklyModuleData;
   weeklyTurnoData?: WeeklyTurnoData;
   activeWeek: string;
