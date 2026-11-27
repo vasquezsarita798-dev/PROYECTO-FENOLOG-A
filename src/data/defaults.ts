@@ -46,8 +46,8 @@ export function createDefaultShoots(baseLong: number, baseDiam: number): ShootMe
 export function createZeroShoots(): ShootMeasurement[] {
   return [1, 2, 3, 4, 5].map((num) => ({
     num,
-    longitud: 0,
-    diametro: 0,
+    longitud: '',
+    diametro: '',
   }));
 }
 
@@ -55,15 +55,15 @@ export function createZeroPlant(num: number): PlantData {
   return {
     id: `P-${num}`,
     nombre: `Planta ${num}`,
-    cant_flujo1: 0,
-    cant_flujo2: 0,
-    cant_flujo3: 0,
-    induccion: 0,
-    inactivos: 0,
-    vigorosos: 0,
-    no_vigorosos: 0,
-    basales: 0,
-    retonos: 0,
+    cant_flujo1: '',
+    cant_flujo2: '',
+    cant_flujo3: '',
+    induccion: '',
+    inactivos: '',
+    vigorosos: '',
+    no_vigorosos: '',
+    basales: '',
+    retonos: '',
     dias: 7,
     observaciones: '',
     flujo1: createZeroShoots(),

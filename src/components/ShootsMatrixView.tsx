@@ -1,6 +1,6 @@
 import React from 'react';
 import { createDefaultShoots } from '../data/defaults';
-import type { FlushKey, ValveData } from '../types/phenology';
+import type { FlushKey, NumericInput, ValveData } from '../types/phenology';
 
 interface ShootsMatrixViewProps {
   valvesData: ValveData[];
@@ -10,9 +10,15 @@ interface ShootsMatrixViewProps {
     flushKey: FlushKey,
     bIdx: number,
     prop: 'longitud' | 'diametro',
-    val: number,
+    val: NumericInput,
   ) => void;
 }
+
+const parseDecimalInput = (raw: string): NumericInput => {
+  if (raw === '') return '';
+  const n = parseFloat(raw);
+  return Number.isNaN(n) ? '' : n;
+};
 
 export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
   valvesData,
@@ -127,12 +133,13 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                     <td style={{ fontWeight: 700 }}>{p.nombre}</td>
 
                     {[0, 1, 2, 3, 4].map((i) => {
-                      const b = p.flujo1[i] || { longitud: 0, diametro: 0 };
+                      const b = p.flujo1[i] || { longitud: '', diametro: '' };
                       return (
                         <React.Fragment key={`f1-${i}`}>
                           <td style={{ background: '#eff6ff', textAlign: 'right' }}>
                             <input
                               type="number"
+                              inputMode="decimal"
                               step="0.1"
                               className="shoot-input"
                               style={{ width: '58px' }}
@@ -144,7 +151,7 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                                   'flujo1',
                                   i,
                                   'longitud',
-                                  parseFloat(e.target.value) || 0,
+                                  parseDecimalInput(e.target.value),
                                 )
                               }
                             />
@@ -152,6 +159,7 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                           <td style={{ background: '#eff6ff', textAlign: 'right' }}>
                             <input
                               type="number"
+                              inputMode="decimal"
                               step="0.1"
                               className="shoot-input"
                               style={{ width: '58px' }}
@@ -163,7 +171,7 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                                   'flujo1',
                                   i,
                                   'diametro',
-                                  parseFloat(e.target.value) || 0,
+                                  parseDecimalInput(e.target.value),
                                 )
                               }
                             />
@@ -173,12 +181,13 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                     })}
 
                     {[0, 1, 2, 3, 4].map((i) => {
-                      const b = f2[i] || { longitud: 0, diametro: 0 };
+                      const b = f2[i] || { longitud: '', diametro: '' };
                       return (
                         <React.Fragment key={`f2-${i}`}>
                           <td style={{ background: '#ecfdf5', textAlign: 'right' }}>
                             <input
                               type="number"
+                              inputMode="decimal"
                               step="0.1"
                               className="shoot-input"
                               style={{ width: '58px' }}
@@ -190,7 +199,7 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                                   'flujo2',
                                   i,
                                   'longitud',
-                                  parseFloat(e.target.value) || 0,
+                                  parseDecimalInput(e.target.value),
                                 )
                               }
                             />
@@ -198,6 +207,7 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                           <td style={{ background: '#ecfdf5', textAlign: 'right' }}>
                             <input
                               type="number"
+                              inputMode="decimal"
                               step="0.1"
                               className="shoot-input"
                               style={{ width: '58px' }}
@@ -209,7 +219,7 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                                   'flujo2',
                                   i,
                                   'diametro',
-                                  parseFloat(e.target.value) || 0,
+                                  parseDecimalInput(e.target.value),
                                 )
                               }
                             />
@@ -219,12 +229,13 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                     })}
 
                     {[0, 1, 2, 3, 4].map((i) => {
-                      const b = p.flujo3[i] || { longitud: 0, diametro: 0 };
+                      const b = p.flujo3[i] || { longitud: '', diametro: '' };
                       return (
                         <React.Fragment key={`f3-${i}`}>
                           <td style={{ background: '#f5f3ff', textAlign: 'right' }}>
                             <input
                               type="number"
+                              inputMode="decimal"
                               step="0.1"
                               className="shoot-input"
                               style={{ width: '58px' }}
@@ -236,7 +247,7 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                                   'flujo3',
                                   i,
                                   'longitud',
-                                  parseFloat(e.target.value) || 0,
+                                  parseDecimalInput(e.target.value),
                                 )
                               }
                             />
@@ -244,6 +255,7 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                           <td style={{ background: '#f5f3ff', textAlign: 'right' }}>
                             <input
                               type="number"
+                              inputMode="decimal"
                               step="0.1"
                               className="shoot-input"
                               style={{ width: '58px' }}
@@ -255,7 +267,7 @@ export const ShootsMatrixView: React.FC<ShootsMatrixViewProps> = ({
                                   'flujo3',
                                   i,
                                   'diametro',
-                                  parseFloat(e.target.value) || 0,
+                                  parseDecimalInput(e.target.value),
                                 )
                               }
                             />

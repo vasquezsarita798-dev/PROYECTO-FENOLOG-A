@@ -2,10 +2,12 @@ export type ViewMode = 'valve' | 'table' | 'shoots';
 export type GrowthChartMetric = 'longitud' | 'diametro' | 'brotes' | 'flujos';
 export type FlushKey = 'flujo1' | 'flujo2' | 'flujo3';
 
+export type NumericInput = number | '';
+
 export interface ShootMeasurement {
   num: number;
-  longitud: number;
-  diametro: number;
+  longitud: NumericInput;
+  diametro: NumericInput;
 }
 
 export type GrowthRateBasis = 'global' | 'flujo1' | 'flujo2' | 'flujo3';
@@ -13,18 +15,18 @@ export type GrowthRateBasis = 'global' | 'flujo1' | 'flujo2' | 'flujo3';
 export interface PlantData {
   id: string;
   nombre: string;
-  cant_flujo1?: number;
-  cant_flujo2?: number;
-  cant_flujo3?: number;
-  prev_long_f1?: number;
-  prev_long_f2?: number;
-  prev_long_f3?: number;
-  induccion: number;
-  inactivos: number;
-  vigorosos: number;
-  no_vigorosos: number;
-  basales: number;
-  retonos: number;
+  cant_flujo1?: NumericInput;
+  cant_flujo2?: NumericInput;
+  cant_flujo3?: NumericInput;
+  prev_long_f1?: NumericInput;
+  prev_long_f2?: NumericInput;
+  prev_long_f3?: NumericInput;
+  induccion: NumericInput;
+  inactivos: NumericInput;
+  vigorosos: NumericInput;
+  no_vigorosos: NumericInput;
+  basales: NumericInput;
+  retonos: NumericInput;
   dias: number;
   observaciones: string;
   flujo1: ShootMeasurement[];

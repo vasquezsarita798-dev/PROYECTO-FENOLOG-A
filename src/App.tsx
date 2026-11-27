@@ -49,6 +49,7 @@ import type {
   GrowthRateBasis,
   KpiCard,
   MasterCatalogItem,
+  NumericInput,
   PlantData,
   TableColumn,
   ValveData,
@@ -245,9 +246,12 @@ export default function App() {
   const [dialogRequest, setDialogRequest] = useState<DialogRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSubmittingValve, setIsSubmittingValve] = useState<boolean>(false);
+  const [lastSubmissionNotice, setLastSubmissionNotice] = useState<string | null>(null);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingLocalSaveRef = useRef<boolean>(false);
+  const lastLocalEditAtRef = useRef<number>(0);
   const latestStateRef = useRef<AppState>(appState);
   latestStateRef.current = appState;
   const masterCatalogRef = useRef<MasterCatalogItem[]>(masterCatalog);
@@ -264,6 +268,9 @@ export default function App() {
   }, []);
 
   const persistState = useCallback((nextState: AppState) => {
+    lastLocalEditAtRef.current = Date.now();
+    pendingLocalSaveRef.current = true;
+
     try {
       localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(nextState));
     } catch {
@@ -272,7 +279,9 @@ export default function App() {
 
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(async () => {
+      saveTimeoutRef.current = null;
       const res = await saveStateToFirestore(nextState);
+      pendingLocalSaveRef.current = false;
       if (res.ok) {
         setFirestoreOnline(true);
         setFirestoreStatusText(res.statusText);
@@ -284,6 +293,9 @@ export default function App() {
   }, []);
 
   const persistStateImmediately = useCallback(async (nextState: AppState) => {
+    lastLocalEditAtRef.current = Date.now();
+    pendingLocalSaveRef.current = true;
+
     try {
       localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(nextState));
     } catch {
@@ -296,6 +308,7 @@ export default function App() {
     }
 
     const res = await saveStateToFirestore(nextState);
+    pendingLocalSaveRef.current = false;
     if (res.ok) {
       setFirestoreOnline(true);
       setFirestoreStatusText(res.statusText);
@@ -306,8 +319,14 @@ export default function App() {
     return res;
   }, []);
 
-  const applyRemoteState = useCallback((remote: Partial<AppState>) => {
+  const applyRemoteState = useCallback((remote: Partial<AppState>, force = false) => {
     if (!remote) return;
+    if (
+      !force &&
+      (pendingLocalSaveRef.current || Date.now() - lastLocalEditAtRef.current < 2000)
+    ) {
+      return;
+    }
     setAppState((prev) => {
       const rawValves = remote.valves && remote.valves.length > 0 ? remote.valves : prev.valves;
       const valves = normalizeValvesList(rawValves, masterCatalogRef.current);
@@ -651,8 +670,8 @@ export default function App() {
     if (!target) return;
     setDialogRequest({
       mode: 'confirm',
-      title: 'Poner Válvula en 0',
-      message: `¿Deseas reiniciar en 0 todos los parámetros, brotes y longitudes de la Válvula ${target.nombre}?`,
+      title: 'Vaciar Ficha de Válvula',
+      message: `¿Deseas dejar vacíos todos los espacios de parámetros, brotes y longitudes de la Válvula ${target.nombre}?`,
       onConfirm: () => {
         updateStateAndPersist((prev) => {
           const valves = prev.valves.map((v, idx) => {
@@ -668,7 +687,7 @@ export default function App() {
           });
           return { ...prev, valves };
         }, true);
-        notify(`Válvula ${target.nombre} reiniciada con todos los valores en 0.`);
+        notify(`Válvula ${target.nombre} reiniciada con todos los espacios vacíos.`);
       },
     });
   };
@@ -748,13 +767,13 @@ export default function App() {
       const res = await persistStateImmediately(nextState);
 
       if (res.ok || res.statusText === 'Modo Local') {
-        notify(
-          `✓ Datos enviados: Válvula ${currValve.nombre} guardada. Siguiente Válvula ${nextValveNum} lista en 0.`,
-        );
+        const msg = `✓ Datos enviados: Válvula ${currValve.nombre} guardada en Firestore. Ahora estás llenando la nueva Válvula ${nextValveNum} (espacios vacíos).`;
+        setLastSubmissionNotice(msg);
+        notify(msg);
       } else {
-        notify(
-          `Guardado local listo (Válvula ${currValve.nombre}). Siguiente Válvula ${nextValveNum} en 0. Nota nube: ${res.statusText}`,
-        );
+        const msg = `Guardado local listo (Válvula ${currValve.nombre}). Nueva Válvula ${nextValveNum} vacía. Nota nube: ${res.statusText}`;
+        setLastSubmissionNotice(msg);
+        notify(msg);
       }
 
       document
@@ -809,7 +828,7 @@ export default function App() {
     flushKey: FlushKey,
     bIdx: number,
     prop: 'longitud' | 'diametro',
-    value: number,
+    value: NumericInput,
   ) => {
     updateStateAndPersist((prev) => {
       const valves = prev.valves.map((v, vi) => {
@@ -838,7 +857,19 @@ export default function App() {
         if (colId === 'variedad') return { ...v, variedad: value };
         if (colId === 'valvula') return { ...v, nombre: cleanDigits };
 
-        const numVal = parseFloat(value) || 0;
+        const trimmed = value.trim();
+        const isEmpty = trimmed === '';
+        const parsedInt: NumericInput = isEmpty
+          ? ''
+          : Number.isNaN(parseInt(trimmed, 10))
+            ? ''
+            : parseInt(trimmed, 10);
+        const parsedFloat: NumericInput = isEmpty
+          ? ''
+          : Number.isNaN(parseFloat(trimmed))
+            ? ''
+            : parseFloat(trimmed);
+
         const plantas = v.plantas.map((p, pi) => {
           if (pi !== pIdx) return p;
           if (
@@ -849,17 +880,17 @@ export default function App() {
             colId === 'basales' ||
             colId === 'retonos'
           ) {
-            return { ...p, [colId]: parseInt(String(numVal), 10) };
+            return { ...p, [colId]: parsedInt };
           }
-          if (colId === 'cant_f1') return { ...p, cant_flujo1: parseInt(String(numVal), 10) };
-          if (colId === 'cant_f2') return { ...p, cant_flujo2: parseInt(String(numVal), 10) };
-          if (colId === 'cant_f3') return { ...p, cant_flujo3: parseInt(String(numVal), 10) };
+          if (colId === 'cant_f1') return { ...p, cant_flujo1: parsedInt };
+          if (colId === 'cant_f2') return { ...p, cant_flujo2: parsedInt };
+          if (colId === 'cant_f3') return { ...p, cant_flujo3: parsedInt };
           if (colId === 'prev_long_prom') {
             return {
               ...p,
-              prev_long_f1: numVal,
-              prev_long_f2: numVal,
-              prev_long_f3: numVal,
+              prev_long_f1: parsedFloat,
+              prev_long_f2: parsedFloat,
+              prev_long_f3: parsedFloat,
             };
           }
           if (colId === 'planta') return { ...p, nombre: value };
@@ -1117,7 +1148,7 @@ export default function App() {
     if (res.error) {
       notify('Error al obtener datos de Firestore: ' + res.error);
     } else if (res.exists && res.data) {
-      applyRemoteState(res.data);
+      applyRemoteState(res.data, true);
       notify('¡Datos actualizados exitosamente desde Cloud Firestore!');
     } else {
       notify('No se encontró ningún registro en Firestore para este proyecto.');
@@ -1319,6 +1350,8 @@ export default function App() {
             onSubmitAndNextValve={handleSubmitAndNextValve}
             onResetCurrentValveToZero={handleResetCurrentValveToZero}
             isSubmittingValve={isSubmittingValve}
+            lastSubmissionNotice={lastSubmissionNotice}
+            onDismissSubmissionNotice={() => setLastSubmissionNotice(null)}
           />
         )}
 

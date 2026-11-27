@@ -4,6 +4,7 @@ import type {
   GrowthRateBasis,
   KpiCard,
   MasterCatalogItem,
+  NumericInput,
   PlantData,
   ShootMeasurement,
   ValveData,
@@ -241,6 +242,12 @@ export function getShootsAvg(
   return +(sum / shootsArr.length).toFixed(1);
 }
 
+export function toNumericValue(val: NumericInput | undefined, fallback = 0): number {
+  if (val === undefined || val === '') return fallback;
+  const n = Number(val);
+  return Number.isNaN(n) ? fallback : n;
+}
+
 export function resolvePlantPreviousLengths(
   plant: PlantData,
   modulo: string,
@@ -250,13 +257,12 @@ export function resolvePlantPreviousLengths(
   weeklyModuleData: WeeklyModuleData,
   activeWeek: string,
 ): { prevF1: number; prevF2: number; prevF3: number; prevProm: number } {
+  const hasPrevF1 = plant.prev_long_f1 !== undefined && plant.prev_long_f1 !== '';
+  const hasPrevF2 = plant.prev_long_f2 !== undefined && plant.prev_long_f2 !== '';
+  const hasPrevF3 = plant.prev_long_f3 !== undefined && plant.prev_long_f3 !== '';
+
   const isUnmeasuredZero =
-    f1Long === 0 &&
-    f2Long === 0 &&
-    f3Long === 0 &&
-    plant.prev_long_f1 === undefined &&
-    plant.prev_long_f2 === undefined &&
-    plant.prev_long_f3 === undefined;
+    f1Long === 0 && f2Long === 0 && f3Long === 0 && !hasPrevF1 && !hasPrevF2 && !hasPrevF3;
 
   if (isUnmeasuredZero) {
     return { prevF1: 0, prevF2: 0, prevF3: 0, prevProm: 0 };
@@ -265,26 +271,23 @@ export function resolvePlantPreviousLengths(
   const prevWeek = getPreviousWeekKey(weeklyModuleData, activeWeek);
   const prevModStats = prevWeek ? weeklyModuleData[prevWeek]?.[modulo] : undefined;
 
-  const prevF1 =
-    plant.prev_long_f1 !== undefined
-      ? plant.prev_long_f1
-      : prevModStats?.f1_long !== undefined
-        ? prevModStats.f1_long
-        : f1Long;
+  const prevF1 = hasPrevF1
+    ? toNumericValue(plant.prev_long_f1, 0)
+    : prevModStats?.f1_long !== undefined
+      ? prevModStats.f1_long
+      : f1Long;
 
-  const prevF2 =
-    plant.prev_long_f2 !== undefined
-      ? plant.prev_long_f2
-      : prevModStats?.f2_long !== undefined
-        ? prevModStats.f2_long
-        : f2Long;
+  const prevF2 = hasPrevF2
+    ? toNumericValue(plant.prev_long_f2, 0)
+    : prevModStats?.f2_long !== undefined
+      ? prevModStats.f2_long
+      : f2Long;
 
-  const prevF3 =
-    plant.prev_long_f3 !== undefined
-      ? plant.prev_long_f3
-      : prevModStats?.f3_long !== undefined
-        ? prevModStats.f3_long
-        : f3Long;
+  const prevF3 = hasPrevF3
+    ? toNumericValue(plant.prev_long_f3, 0)
+    : prevModStats?.f3_long !== undefined
+      ? prevModStats.f3_long
+      : f3Long;
 
   const prevProm = +((prevF1 + prevF2 + prevF3) / 3).toFixed(1);
   return { prevF1, prevF2, prevF3, prevProm };
@@ -353,9 +356,9 @@ export function getFlattenedPlantRows(
       else if (growthRateBasis === 'flujo2') tasa = tasaF2;
       else if (growthRateBasis === 'flujo3') tasa = tasaF3;
 
-      const cantF1 = plant.cant_flujo1 !== undefined ? plant.cant_flujo1 : 5;
-      const cantF2 = plant.cant_flujo2 !== undefined ? plant.cant_flujo2 : 5;
-      const cantF3 = plant.cant_flujo3 !== undefined ? plant.cant_flujo3 : 5;
+      const cantF1 = plant.cant_flujo1 !== undefined ? toNumericValue(plant.cant_flujo1, 0) : 5;
+      const cantF2 = plant.cant_flujo2 !== undefined ? toNumericValue(plant.cant_flujo2, 0) : 5;
+      const cantF3 = plant.cant_flujo3 !== undefined ? toNumericValue(plant.cant_flujo3, 0) : 5;
       const totalBrotes = cantF1 + cantF2 + cantF3;
 
       rows.push({
@@ -388,12 +391,12 @@ export function getFlattenedPlantRows(
         diam_prom: diamProm,
         dias_eval: effectiveDays,
         tasa,
-        induccion: plant.induccion || 0,
-        inactivos: plant.inactivos || 0,
-        vigorosos: plant.vigorosos || 0,
-        no_vigorosos: plant.no_vigorosos || 0,
-        basales: plant.basales || 0,
-        retonos: plant.retonos || 0,
+        induccion: toNumericValue(plant.induccion, 0),
+        inactivos: toNumericValue(plant.inactivos, 0),
+        vigorosos: toNumericValue(plant.vigorosos, 0),
+        no_vigorosos: toNumericValue(plant.no_vigorosos, 0),
+        basales: toNumericValue(plant.basales, 0),
+        retonos: toNumericValue(plant.retonos, 0),
         total_brotes: totalBrotes,
         observaciones: plant.observaciones || '',
       });

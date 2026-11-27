@@ -95,7 +95,9 @@ export function subscribeToEvaluationDoc(
       docRef,
       (snap) => {
         if (snap.exists()) {
-          onData(snap.data() as Partial<AppState>);
+          if (!snap.metadata.hasPendingWrites) {
+            onData(snap.data() as Partial<AppState>);
+          }
           onStatus(true, 'Sincronizado');
         } else {
           onMissing();
@@ -126,27 +128,29 @@ export async function saveStateToFirestore(state: AppState): Promise<{
   }
 
   try {
+    const cleanState = JSON.parse(JSON.stringify(state)) as AppState;
     const evalDocRef = doc(firestoreDb, 'evaluaciones', 'reiter_fenologia');
     await setDoc(
       evalDocRef,
       {
-        ...state,
+        ...cleanState,
         ultimaActualizacion: serverTimestamp(),
       },
       { merge: true },
     );
 
-    if (state.activeWeek) {
+    const safeWeek = (cleanState.activeWeek || '').trim();
+    if (safeWeek) {
       const histCollection = collection(firestoreDb, 'evaluaciones_historicas');
-      const histDocRef = doc(histCollection, state.activeWeek);
+      const histDocRef = doc(histCollection, safeWeek);
       await setDoc(
         histDocRef,
         {
-          semana: state.activeWeek,
-          valves: state.valves,
+          semana: safeWeek,
+          valves: cleanState.valves,
           fecha: new Date().toISOString(),
-          fundo: state.fundo,
-          modulo: state.modulo,
+          fundo: cleanState.fundo || '',
+          modulo: cleanState.modulo || '',
         },
         { merge: true },
       );
@@ -155,7 +159,7 @@ export async function saveStateToFirestore(state: AppState): Promise<{
     return { ok: true, statusText: 'Sincronizado' };
   } catch (e: unknown) {
     const err = e as { code?: string; message?: string };
-    console.warn('Firestore error al guardar:', err);
+    console.error('Firestore error al guardar:', err);
     let errText = 'Error al guardar';
     if (err.code === 'permission-denied') {
       errText = 'Permiso denegado (revisa Reglas en Firebase Console)';

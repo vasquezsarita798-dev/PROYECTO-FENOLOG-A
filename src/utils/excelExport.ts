@@ -8,7 +8,11 @@ import type {
   WeeklyModuleData,
   WeeklyTurnoData,
 } from '../types/phenology';
-import { buildGrowthRateComparisonMatrix, getFlattenedPlantRows } from './calculations';
+import {
+  buildGrowthRateComparisonMatrix,
+  getFlattenedPlantRows,
+  toNumericValue,
+} from './calculations';
 
 export function exportToExcel(
   valvesData: ValveData[],
@@ -71,6 +75,9 @@ export function exportToExcel(
   valvesData.forEach((v) => {
     v.plantas.forEach((p) => {
       const f2 = p.flujo2 || createDefaultShoots(25.0, 4.5);
+      const cantF1 = p.cant_flujo1 !== undefined ? toNumericValue(p.cant_flujo1, 0) : 5;
+      const cantF2 = p.cant_flujo2 !== undefined ? toNumericValue(p.cant_flujo2, 0) : 5;
+      const cantF3 = p.cant_flujo3 !== undefined ? toNumericValue(p.cant_flujo3, 0) : 5;
       wsShootsData.push({
         Semana: activeWeek,
         Fecha_Evaluacion: fechaEvaluacion,
@@ -80,13 +87,10 @@ export function exportToExcel(
         Válvula: v.nombre,
         Variedad: v.variedad,
         Planta: p.nombre,
-        Total_Brotes_Planta:
-          (p.cant_flujo1 !== undefined ? p.cant_flujo1 : 5) +
-          (p.cant_flujo2 !== undefined ? p.cant_flujo2 : 5) +
-          (p.cant_flujo3 !== undefined ? p.cant_flujo3 : 5),
-        Cant_Brotes_F1: p.cant_flujo1 !== undefined ? p.cant_flujo1 : 5,
-        Cant_Brotes_F2: p.cant_flujo2 !== undefined ? p.cant_flujo2 : 5,
-        Cant_Brotes_F3: p.cant_flujo3 !== undefined ? p.cant_flujo3 : 5,
+        Total_Brotes_Planta: cantF1 + cantF2 + cantF3,
+        Cant_Brotes_F1: cantF1,
+        Cant_Brotes_F2: cantF2,
+        Cant_Brotes_F3: cantF3,
         'F1_B1_Long(cm)': p.flujo1[0]?.longitud,
         'F1_B1_Diam(mm)': p.flujo1[0]?.diametro,
         'F1_B2_Long(cm)': p.flujo1[1]?.longitud,

@@ -4,6 +4,7 @@ import type {
   FlushKey,
   GrowthRateBasis,
   MasterCatalogItem,
+  NumericInput,
   PlantData,
   ValveData,
   WeeklyModuleData,
@@ -13,6 +14,7 @@ import {
   getShootsAvg,
   resolvePlantPreviousLengths,
   resolveValveTurno,
+  toNumericValue,
 } from '../utils/calculations';
 
 interface ValveViewProps {
@@ -47,11 +49,13 @@ interface ValveViewProps {
     flushKey: FlushKey,
     bIdx: number,
     prop: 'longitud' | 'diametro',
-    value: number,
+    value: NumericInput,
   ) => void;
   onSubmitAndNextValve: () => void;
   onResetCurrentValveToZero: () => void;
   isSubmittingValve?: boolean;
+  lastSubmissionNotice?: string | null;
+  onDismissSubmissionNotice?: () => void;
 }
 
 export const ValveView: React.FC<ValveViewProps> = ({
@@ -77,10 +81,13 @@ export const ValveView: React.FC<ValveViewProps> = ({
   onSubmitAndNextValve,
   onResetCurrentValveToZero,
   isSubmittingValve = false,
+  lastSubmissionNotice = null,
+  onDismissSubmissionNotice,
 }) => {
   const modules = Array.from(new Set(valvesData.map((v) => v.modulo || '1')));
   const currentValve = valvesData[currentValveIndex];
   const diasTranscurridos = getDaysBetweenDates(fechaAnterior, fechaEvaluacion);
+  const submittedCount = valvesData.filter((v) => Boolean(v.submittedAt)).length;
 
   const formatSubmittedTime = (iso?: string) => {
     if (!iso) return '';
@@ -91,6 +98,18 @@ export const ValveView: React.FC<ValveViewProps> = ({
     } catch {
       return '';
     }
+  };
+
+  const parseIntInput = (raw: string): NumericInput => {
+    if (raw === '') return '';
+    const n = parseInt(raw, 10);
+    return Number.isNaN(n) ? '' : n;
+  };
+
+  const parseDecimalInput = (raw: string): NumericInput => {
+    if (raw === '') return '';
+    const n = parseFloat(raw);
+    return Number.isNaN(n) ? '' : n;
   };
 
   return (
@@ -114,10 +133,65 @@ export const ValveView: React.FC<ValveViewProps> = ({
             ))}
           </select>
         </div>
-        <div style={{ fontSize: '0.85rem', color: '#64748b', marginLeft: 'auto' }}>
-          Cada válvula registra 3 plantas y sus 3 flujos (5 brotes cada uno).
+        <div style={{ fontSize: '0.85rem', color: '#64748b', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {submittedCount > 0 && (
+            <span
+              style={{
+                background: '#dcfce7',
+                color: '#166534',
+                border: '1px solid #86efac',
+                padding: '2px 9px',
+                borderRadius: '8px',
+                fontWeight: 700,
+                fontSize: '0.78rem',
+              }}
+            >
+              <i className="fa-solid fa-circle-check" /> {submittedCount} de {valvesData.length} enviadas
+            </span>
+          )}
+          <span>Cada válvula registra 3 plantas y sus 3 flujos (5 brotes cada uno).</span>
         </div>
       </div>
+
+      {lastSubmissionNotice && (
+        <div
+          style={{
+            marginBottom: '12px',
+            background: '#ecfdf5',
+            border: '1px solid #6ee7b7',
+            color: '#065f46',
+            borderRadius: '10px',
+            padding: '10px 14px',
+            fontSize: '0.85rem',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+          }}
+        >
+          <span>
+            <i className="fa-solid fa-circle-check" style={{ color: '#059669', marginRight: '6px' }} />
+            {lastSubmissionNotice}
+          </span>
+          {onDismissSubmissionNotice && (
+            <button
+              onClick={onDismissSubmissionNotice}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#065f46',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                fontWeight: 800,
+              }}
+              title="Cerrar aviso"
+            >
+              &times;
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="valve-tabs-bar" id="valveTabsBar">
         {valvesData.map((valve, idx) => {
@@ -308,9 +382,9 @@ export const ValveView: React.FC<ValveViewProps> = ({
           <button
             className="btn btn-sm btn-secondary"
             onClick={onResetCurrentValveToZero}
-            title="Poner todos los números de esta válvula en 0"
+            title="Dejar vacíos todos los espacios de esta válvula"
           >
-            <i className="fa-solid fa-eraser" /> Poner en 0
+            <i className="fa-solid fa-eraser" /> Vaciar Ficha
           </button>
           <button
             className="btn btn-sm btn-danger"
@@ -355,9 +429,16 @@ export const ValveView: React.FC<ValveViewProps> = ({
           else if (growthRateBasis === 'flujo3') tasaCrec = tasaF3;
 
           const totalBrotes =
-            (plant.cant_flujo1 !== undefined ? plant.cant_flujo1 : 5) +
-            (plant.cant_flujo2 !== undefined ? plant.cant_flujo2 : 5) +
-            (plant.cant_flujo3 !== undefined ? plant.cant_flujo3 : 5);
+            (plant.cant_flujo1 !== undefined ? toNumericValue(plant.cant_flujo1, 0) : 5) +
+            (plant.cant_flujo2 !== undefined ? toNumericValue(plant.cant_flujo2, 0) : 5) +
+            (plant.cant_flujo3 !== undefined ? toNumericValue(plant.cant_flujo3, 0) : 5);
+
+          const displayPrevF1 =
+            plant.prev_long_f1 !== undefined ? plant.prev_long_f1 : prevF1 === 0 ? '' : prevF1;
+          const displayPrevF2 =
+            plant.prev_long_f2 !== undefined ? plant.prev_long_f2 : prevF2 === 0 ? '' : prevF2;
+          const displayPrevF3 =
+            plant.prev_long_f3 !== undefined ? plant.prev_long_f3 : prevF3 === 0 ? '' : prevF3;
 
           return (
             <div key={plant.id + '-' + pIdx} className="plant-evaluation-card">
@@ -438,10 +519,11 @@ export const ValveView: React.FC<ValveViewProps> = ({
                   </span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     className="param-input"
                     value={plant.induccion}
                     onChange={(e) =>
-                      onUpdatePlantField(pIdx, 'induccion', parseInt(e.target.value, 10) || 0)
+                      onUpdatePlantField(pIdx, 'induccion', parseIntInput(e.target.value))
                     }
                   />
                 </div>
@@ -451,10 +533,11 @@ export const ValveView: React.FC<ValveViewProps> = ({
                   </span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     className="param-input"
                     value={plant.inactivos}
                     onChange={(e) =>
-                      onUpdatePlantField(pIdx, 'inactivos', parseInt(e.target.value, 10) || 0)
+                      onUpdatePlantField(pIdx, 'inactivos', parseIntInput(e.target.value))
                     }
                   />
                 </div>
@@ -465,10 +548,11 @@ export const ValveView: React.FC<ValveViewProps> = ({
                   </span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     className="param-input"
                     value={plant.vigorosos}
                     onChange={(e) =>
-                      onUpdatePlantField(pIdx, 'vigorosos', parseInt(e.target.value, 10) || 0)
+                      onUpdatePlantField(pIdx, 'vigorosos', parseIntInput(e.target.value))
                     }
                   />
                 </div>
@@ -479,10 +563,11 @@ export const ValveView: React.FC<ValveViewProps> = ({
                   </span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     className="param-input"
                     value={plant.no_vigorosos}
                     onChange={(e) =>
-                      onUpdatePlantField(pIdx, 'no_vigorosos', parseInt(e.target.value, 10) || 0)
+                      onUpdatePlantField(pIdx, 'no_vigorosos', parseIntInput(e.target.value))
                     }
                   />
                 </div>
@@ -492,10 +577,11 @@ export const ValveView: React.FC<ValveViewProps> = ({
                   </span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     className="param-input"
                     value={plant.basales}
                     onChange={(e) =>
-                      onUpdatePlantField(pIdx, 'basales', parseInt(e.target.value, 10) || 0)
+                      onUpdatePlantField(pIdx, 'basales', parseIntInput(e.target.value))
                     }
                   />
                 </div>
@@ -505,10 +591,11 @@ export const ValveView: React.FC<ValveViewProps> = ({
                   </span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     className="param-input"
                     value={plant.retonos}
                     onChange={(e) =>
-                      onUpdatePlantField(pIdx, 'retonos', parseInt(e.target.value, 10) || 0)
+                      onUpdatePlantField(pIdx, 'retonos', parseIntInput(e.target.value))
                     }
                   />
                 </div>
@@ -535,6 +622,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                     </label>
                     <input
                       type="number"
+                      inputMode="numeric"
                       min={0}
                       className="param-input"
                       style={{
@@ -547,7 +635,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                       }}
                       value={plant.cant_flujo1 !== undefined ? plant.cant_flujo1 : 5}
                       onChange={(e) =>
-                        onUpdatePlantField(pIdx, 'cant_flujo1', parseInt(e.target.value, 10) || 0)
+                        onUpdatePlantField(pIdx, 'cant_flujo1', parseIntInput(e.target.value))
                       }
                       title="Cantidad total de brotes del 1er flujo en esta planta"
                     />
@@ -556,6 +644,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                     </label>
                     <input
                       type="number"
+                      inputMode="decimal"
                       step="0.1"
                       className="param-input"
                       style={{
@@ -566,9 +655,9 @@ export const ValveView: React.FC<ValveViewProps> = ({
                         textAlign: 'center',
                         background: '#ffffff',
                       }}
-                      value={prevF1}
+                      value={displayPrevF1}
                       onChange={(e) =>
-                        onUpdatePlantField(pIdx, 'prev_long_f1', parseFloat(e.target.value) || 0)
+                        onUpdatePlantField(pIdx, 'prev_long_f1', parseDecimalInput(e.target.value))
                       }
                       title="Longitud promedio del 1er flujo en la fecha anterior (cm)"
                     />
@@ -603,6 +692,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                         <td>
                           <input
                             type="number"
+                            inputMode="decimal"
                             step="0.1"
                             className="shoot-input"
                             value={b.longitud}
@@ -612,7 +702,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                                 'flujo1',
                                 bIdx,
                                 'longitud',
-                                parseFloat(e.target.value) || 0,
+                                parseDecimalInput(e.target.value),
                               )
                             }
                           />
@@ -620,6 +710,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                         <td>
                           <input
                             type="number"
+                            inputMode="decimal"
                             step="0.1"
                             className="shoot-input"
                             value={b.diametro}
@@ -629,7 +720,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                                 'flujo1',
                                 bIdx,
                                 'diametro',
-                                parseFloat(e.target.value) || 0,
+                                parseDecimalInput(e.target.value),
                               )
                             }
                           />
@@ -661,6 +752,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                     </label>
                     <input
                       type="number"
+                      inputMode="numeric"
                       min={0}
                       className="param-input"
                       style={{
@@ -673,7 +765,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                       }}
                       value={plant.cant_flujo2 !== undefined ? plant.cant_flujo2 : 5}
                       onChange={(e) =>
-                        onUpdatePlantField(pIdx, 'cant_flujo2', parseInt(e.target.value, 10) || 0)
+                        onUpdatePlantField(pIdx, 'cant_flujo2', parseIntInput(e.target.value))
                       }
                       title="Cantidad total de brotes del 2do flujo en esta planta"
                     />
@@ -682,6 +774,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                     </label>
                     <input
                       type="number"
+                      inputMode="decimal"
                       step="0.1"
                       className="param-input"
                       style={{
@@ -692,9 +785,9 @@ export const ValveView: React.FC<ValveViewProps> = ({
                         textAlign: 'center',
                         background: '#ffffff',
                       }}
-                      value={prevF2}
+                      value={displayPrevF2}
                       onChange={(e) =>
-                        onUpdatePlantField(pIdx, 'prev_long_f2', parseFloat(e.target.value) || 0)
+                        onUpdatePlantField(pIdx, 'prev_long_f2', parseDecimalInput(e.target.value))
                       }
                       title="Longitud promedio del 2do flujo en la fecha anterior (cm)"
                     />
@@ -729,6 +822,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                         <td>
                           <input
                             type="number"
+                            inputMode="decimal"
                             step="0.1"
                             className="shoot-input"
                             value={b.longitud}
@@ -738,7 +832,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                                 'flujo2',
                                 bIdx,
                                 'longitud',
-                                parseFloat(e.target.value) || 0,
+                                parseDecimalInput(e.target.value),
                               )
                             }
                           />
@@ -746,6 +840,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                         <td>
                           <input
                             type="number"
+                            inputMode="decimal"
                             step="0.1"
                             className="shoot-input"
                             value={b.diametro}
@@ -755,7 +850,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                                 'flujo2',
                                 bIdx,
                                 'diametro',
-                                parseFloat(e.target.value) || 0,
+                                parseDecimalInput(e.target.value),
                               )
                             }
                           />
@@ -787,6 +882,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                     </label>
                     <input
                       type="number"
+                      inputMode="numeric"
                       min={0}
                       className="param-input"
                       style={{
@@ -799,7 +895,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                       }}
                       value={plant.cant_flujo3 !== undefined ? plant.cant_flujo3 : 5}
                       onChange={(e) =>
-                        onUpdatePlantField(pIdx, 'cant_flujo3', parseInt(e.target.value, 10) || 0)
+                        onUpdatePlantField(pIdx, 'cant_flujo3', parseIntInput(e.target.value))
                       }
                       title="Cantidad total de brotes del 3er flujo en esta planta"
                     />
@@ -808,6 +904,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                     </label>
                     <input
                       type="number"
+                      inputMode="decimal"
                       step="0.1"
                       className="param-input"
                       style={{
@@ -818,9 +915,9 @@ export const ValveView: React.FC<ValveViewProps> = ({
                         textAlign: 'center',
                         background: '#ffffff',
                       }}
-                      value={prevF3}
+                      value={displayPrevF3}
                       onChange={(e) =>
-                        onUpdatePlantField(pIdx, 'prev_long_f3', parseFloat(e.target.value) || 0)
+                        onUpdatePlantField(pIdx, 'prev_long_f3', parseDecimalInput(e.target.value))
                       }
                       title="Longitud promedio del 3er flujo en la fecha anterior (cm)"
                     />
@@ -855,6 +952,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                         <td>
                           <input
                             type="number"
+                            inputMode="decimal"
                             step="0.1"
                             className="shoot-input"
                             value={b.longitud}
@@ -864,7 +962,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                                 'flujo3',
                                 bIdx,
                                 'longitud',
-                                parseFloat(e.target.value) || 0,
+                                parseDecimalInput(e.target.value),
                               )
                             }
                           />
@@ -872,6 +970,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                         <td>
                           <input
                             type="number"
+                            inputMode="decimal"
                             step="0.1"
                             className="shoot-input"
                             value={b.diametro}
@@ -881,7 +980,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
                                 'flujo3',
                                 bIdx,
                                 'diametro',
-                                parseFloat(e.target.value) || 0,
+                                parseDecimalInput(e.target.value),
                               )
                             }
                           />
@@ -962,7 +1061,8 @@ export const ValveView: React.FC<ValveViewProps> = ({
               </span>
             )}
             <span style={{ fontSize: '0.82rem', color: '#475569' }}>
-              Al enviar, se guarda esta válvula en la nube y se abre la siguiente ficha con todos los campos en <strong>0</strong>.
+              Al enviar, se guarda esta válvula en la nube y se abre la siguiente ficha con los{' '}
+              <strong>espacios vacíos</strong> para llenar rápido en celular.
             </span>
           </div>
 
@@ -970,9 +1070,9 @@ export const ValveView: React.FC<ValveViewProps> = ({
             <button
               className="btn btn-secondary"
               onClick={onResetCurrentValveToZero}
-              title="Reiniciar todos los parámetros de la válvula actual a 0"
+              title="Dejar vacíos todos los espacios de la válvula actual"
             >
-              <i className="fa-solid fa-eraser" /> Poner esta Válvula en 0
+              <i className="fa-solid fa-eraser" /> Vaciar esta Ficha
             </button>
             <button
               className="btn btn-success"
@@ -983,7 +1083,7 @@ export const ValveView: React.FC<ValveViewProps> = ({
               <i className="fa-solid fa-paper-plane" />{' '}
               {isSubmittingValve
                 ? 'Enviando...'
-                : 'Datos Enviados → Siguiente Válvula (en 0)'}
+                : 'Datos Enviados → Siguiente Válvula (Vacía)'}
             </button>
           </div>
         </div>
